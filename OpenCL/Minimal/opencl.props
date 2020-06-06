@@ -14,8 +14,8 @@
       -->
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories Condition="'$(Platform)' == 'x64'">%(AdditionalLibraryDirectories);$(OpenclDir)\lib\$(Platform)</AdditionalLibraryDirectories>
-      <AdditionalLibraryDirectories Condition="'$(Platform)' != 'x64'">%(AdditionalLibraryDirectories);$(OpenclDir)\lib\x86</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories Condition="'$(Platform)' != 'Win32'">%(AdditionalLibraryDirectories);$(OpenclDir)\lib\$(Platform)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories Condition="'$(Platform)' == 'Win32'">%(AdditionalLibraryDirectories);$(OpenclDir)\lib\x86</AdditionalLibraryDirectories>
       <AdditionalDependencies>%(AdditionalDependencies);OpenCL.lib</AdditionalDependencies>
       <AdditionalOptions>%(AdditionalOptions)</AdditionalOptions>
       <DelayLoadDLLs>%(DelayLoadDLLs)</DelayLoadDLLs>
