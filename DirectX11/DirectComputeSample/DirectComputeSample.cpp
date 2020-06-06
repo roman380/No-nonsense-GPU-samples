@@ -1,8 +1,37 @@
 #include <stdio.h>
 #include <tchar.h>
-#include <D3DX11.h>
-#include <D3Dcompiler.h>
+
 #include <vector>
+
+#include <shlwapi.h>
+#include <d3d11.h>
+#include <d3dcompiler.h>
+
+#pragma comment(lib, "shlwapi.lib")
+#pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "d3dcompiler.lib")
+
+#include <unknwn.h>
+#include <winrt\base.h>
+#include <winrt\Windows.Foundation.h>
+#include <winrt\Windows.Foundation.Diagnostics.h>
+#include <winrt\Windows.Foundation.Collections.h>
+
+#pragma comment(lib, "windowsapp.lib")
+
+HRESULT D3DX11CompileFromFile(TCHAR const* FileName, VOID*, VOID*, CHAR* EntryPoint, CHAR* Target, DWORD Flags1, DWORD Flags2, VOID*, ID3DBlob** CodeBlob, ID3DBlob** ErrorBlob, VOID*)
+{
+    TCHAR Path[MAX_PATH];
+    GetModuleFileName(nullptr, Path, static_cast<DWORD>(std::size(Path)));
+    PathRemoveFileSpec(Path);
+    PathCombine(Path, Path, FileName);
+    winrt::file_handle File { CreateFile(Path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr) };
+    winrt::check_bool(!!File);
+    BYTE Data[8 << 10];
+    DWORD DataSize;
+    winrt::check_bool(ReadFile(File.get(), Data, static_cast<DWORD>(std::size(Data)), &DataSize, nullptr));
+	return D3DCompile(Data, DataSize, nullptr, nullptr, nullptr, EntryPoint, Target, Flags1, Flags2, CodeBlob, ErrorBlob);
+}
 
 // TODO: This sample is not careful to clean up resources before exiting if 
 // something fails.  If you use it for something important, it's up to you 
@@ -10,22 +39,28 @@
 
 int _tmain(int /*argc*/, _TCHAR* /*argv[]*/)
 {
+    winrt::init_apartment();
+
     // GROUP_SIZE_X defined in kernel.hlsl must match the 
     // groupSize declared here.
-    size_t const groupSize = 512;
-    size_t const numGroups = 16;
-    size_t const dimension = numGroups*groupSize;
+    size_t constexpr groupSize = 512;
+    size_t constexpr numGroups = 16;
+    size_t constexpr dimension = numGroups*groupSize;
 
     // Create a D3D11 device and immediate context. 
     // TODO: The code below uses the default video adapter, with the
     // default set of feature levels.  Please see the MSDN docs if 
     // you wish to control which adapter and feature level are used.
+    DWORD flags = 0;
+    #if defined(_DEBUG)
+        flags |= D3D11_CREATE_DEVICE_DEBUG;
+    #endif
     D3D_FEATURE_LEVEL featureLevel;
-    ID3D11Device* device = nullptr;
-    ID3D11DeviceContext* context = nullptr;
+    winrt::com_ptr<ID3D11Device> device;
+    winrt::com_ptr<ID3D11DeviceContext> context;
     HRESULT hr = D3D11CreateDevice(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, 
-        NULL, NULL, 0, D3D11_SDK_VERSION, &device, 
-        &featureLevel, &context);
+        flags, NULL, 0, D3D11_SDK_VERSION, device.put(), 
+        &featureLevel, context.put());
     if (FAILED(hr))
     {
         printf("D3D11CreateDevice failed with return code %x\n", hr);
@@ -47,20 +82,14 @@ int _tmain(int /*argc*/, _TCHAR* /*argv[]*/)
     }
 
     // Create structured buffers for the "x" and "y" vectors.
-    D3D11_BUFFER_DESC inputBufferDesc;
-    inputBufferDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    CD3D11_BUFFER_DESC inputBufferDesc(sizeof(float) * dimension, D3D11_BIND_SHADER_RESOURCE, D3D11_USAGE_DYNAMIC, D3D11_CPU_ACCESS_WRITE, D3D11_RESOURCE_MISC_BUFFER_STRUCTURED, sizeof(float));
     // The buffers are read-only by the GPU, writeable by the CPU.
     // TODO: If you will never again upate the data in a GPU buffer,
     // you might want to look at using a D3D11_SUBRESOURCE_DATA here to
     // provide the initialization data instead of doing the mapping 
     // and copying that happens below.
-    inputBufferDesc.Usage = D3D11_USAGE_DYNAMIC;
-    inputBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    inputBufferDesc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-    inputBufferDesc.StructureByteStride = sizeof(float);
-    inputBufferDesc.ByteWidth = sizeof(float) * dimension;
-    ID3D11Buffer* xBuffer = nullptr;
-    hr = device->CreateBuffer(&inputBufferDesc, NULL, &xBuffer);
+    winrt::com_ptr<ID3D11Buffer> xBuffer;
+    hr = device->CreateBuffer(&inputBufferDesc, NULL, xBuffer.put());
     if (FAILED(hr))
     {
         printf("CreateBuffer failed for x buffer with return code %x\n", hr);
@@ -68,8 +97,8 @@ int _tmain(int /*argc*/, _TCHAR* /*argv[]*/)
     }
     // We can re-use inputBufferDesc here because the layout and usage of the x
     // and y buffers is exactly the same.
-    ID3D11Buffer* yBuffer = nullptr;
-    hr = device->CreateBuffer(&inputBufferDesc, NULL, &yBuffer);
+    winrt::com_ptr<ID3D11Buffer> yBuffer;
+    hr = device->CreateBuffer(&inputBufferDesc, NULL, yBuffer.put());
     if (FAILED(hr))
     {
         printf("CreateBuffer failed for x buffer with return code %x\n", hr);
@@ -80,16 +109,16 @@ int _tmain(int /*argc*/, _TCHAR* /*argv[]*/)
     // TODO: You can optionally provide a D3D11_SHADER_RESOURCE_VIEW_DESC
     // as the second parameter if you need to use only part of the buffer
     // inside the compute shader.
-    ID3D11ShaderResourceView* xSRV = nullptr;
-    hr = device->CreateShaderResourceView(xBuffer, NULL, &xSRV);
+    winrt::com_ptr<ID3D11ShaderResourceView> xSRV;
+    hr = device->CreateShaderResourceView(xBuffer.get(), NULL, xSRV.put());
     if (FAILED(hr))
     {
         printf("CreateShaderResourceView failed for x buffer with return code %x\n", hr);
         return hr;
     }
 
-    ID3D11ShaderResourceView* ySRV = nullptr;
-    hr = device->CreateShaderResourceView(yBuffer, NULL, &ySRV);
+    winrt::com_ptr<ID3D11ShaderResourceView> ySRV;
+    hr = device->CreateShaderResourceView(yBuffer.get(), NULL, ySRV.put());
     if (FAILED(hr))
     {
         printf("CreateShaderResourceView failed for y buffer with return code %x\n", hr);
@@ -98,16 +127,9 @@ int _tmain(int /*argc*/, _TCHAR* /*argv[]*/)
 
     // Create a structured buffer for the "z" vector.  This buffer needs to be 
     // writeable by the GPU, so we can't create it with CPU read/write access.
-    D3D11_BUFFER_DESC outputBufferDesc;
-    outputBufferDesc.BindFlags = D3D11_BIND_UNORDERED_ACCESS 
-        | D3D11_BIND_SHADER_RESOURCE;
-    outputBufferDesc.Usage = D3D11_USAGE_DEFAULT;
-    outputBufferDesc.CPUAccessFlags = 0;
-    outputBufferDesc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-    outputBufferDesc.StructureByteStride = sizeof(float);
-    outputBufferDesc.ByteWidth = sizeof(float) * dimension;
-    ID3D11Buffer* zBuffer = nullptr;
-    hr = device->CreateBuffer(&outputBufferDesc, NULL, &zBuffer);
+    CD3D11_BUFFER_DESC outputBufferDesc(sizeof(float) * dimension, D3D11_BIND_UNORDERED_ACCESS | D3D11_BIND_SHADER_RESOURCE, D3D11_USAGE_DEFAULT, 0, D3D11_RESOURCE_MISC_BUFFER_STRUCTURED, sizeof(float));
+    winrt::com_ptr<ID3D11Buffer> zBuffer;
+    hr = device->CreateBuffer(&outputBufferDesc, NULL, zBuffer.put());
     if (FAILED(hr))
     {
         printf("CreateBuffer failed for z buffer with return code %x\n", hr);
@@ -115,15 +137,10 @@ int _tmain(int /*argc*/, _TCHAR* /*argv[]*/)
     }
 
     // Create an unordered access view for the "z" vector.  
-    D3D11_UNORDERED_ACCESS_VIEW_DESC outputUAVDesc;
-    outputUAVDesc.Buffer.FirstElement = 0;        
-    outputUAVDesc.Buffer.Flags = 0;            
-    outputUAVDesc.Buffer.NumElements = dimension;
-    outputUAVDesc.Format = DXGI_FORMAT_UNKNOWN;    
-    outputUAVDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;   
-    ID3D11UnorderedAccessView* zBufferUAV;
-    hr = device->CreateUnorderedAccessView(zBuffer, 
-        &outputUAVDesc, &zBufferUAV);
+    CD3D11_UNORDERED_ACCESS_VIEW_DESC outputUAVDesc(D3D11_UAV_DIMENSION_BUFFER, DXGI_FORMAT_UNKNOWN, 0, dimension);
+    winrt::com_ptr<ID3D11UnorderedAccessView> zBufferUAV;
+    hr = device->CreateUnorderedAccessView(zBuffer.get(), 
+        &outputUAVDesc, zBufferUAV.put());
     if (FAILED(hr))
     {
         printf("CreateUnorderedAccessView failed for z buffer with return code %x\n", hr);
@@ -131,15 +148,9 @@ int _tmain(int /*argc*/, _TCHAR* /*argv[]*/)
     }
 
     // Create a staging buffer, which will be used to copy back from zBuffer.
-    D3D11_BUFFER_DESC stagingBufferDesc;
-    stagingBufferDesc.BindFlags = 0;
-    stagingBufferDesc.Usage = D3D11_USAGE_STAGING;  
-    stagingBufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-    stagingBufferDesc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-    stagingBufferDesc.StructureByteStride = sizeof(float);
-    stagingBufferDesc.ByteWidth = sizeof(float) * dimension;
-    ID3D11Buffer* stagingBuffer;
-    hr = device->CreateBuffer(&stagingBufferDesc, NULL, &stagingBuffer);
+    CD3D11_BUFFER_DESC stagingBufferDesc(sizeof(float) * dimension, 0, D3D11_USAGE_STAGING, D3D11_CPU_ACCESS_READ, D3D11_RESOURCE_MISC_BUFFER_STRUCTURED, sizeof(float));
+    winrt::com_ptr<ID3D11Buffer> stagingBuffer;
+    hr = device->CreateBuffer(&stagingBufferDesc, NULL, stagingBuffer.put());
     if (FAILED(hr))
     {
         printf("CreateBuffer failed for staging buffer with return code %x\n", hr);
@@ -148,16 +159,11 @@ int _tmain(int /*argc*/, _TCHAR* /*argv[]*/)
 
     // Create a constant buffer (this buffer is used to pass the constant 
     // value 'a' to the kernel as cbuffer Constants).
-    D3D11_BUFFER_DESC cbDesc;
-    cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-    cbDesc.Usage = D3D11_USAGE_DYNAMIC;  
-    cbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    cbDesc.MiscFlags = 0;
+    CD3D11_BUFFER_DESC cbDesc(sizeof(float)*4, D3D11_BIND_CONSTANT_BUFFER, D3D11_USAGE_DYNAMIC, D3D11_CPU_ACCESS_WRITE);
     // Even though the constant buffer only has one float, DX expects
     // ByteWidth to be a multiple of 4 floats (i.e., one 128-bit register).
-    cbDesc.ByteWidth = sizeof(float)*4;
-    ID3D11Buffer* constantBuffer = nullptr;
-    hr = device->CreateBuffer( &cbDesc, NULL, &constantBuffer);
+    winrt::com_ptr<ID3D11Buffer> constantBuffer;
+    hr = device->CreateBuffer( &cbDesc, NULL, constantBuffer.put());
     if (FAILED(hr))
     {
         printf("CreateBuffer failed for constant buffer with return code %x\n", hr);
@@ -166,31 +172,31 @@ int _tmain(int /*argc*/, _TCHAR* /*argv[]*/)
 
     // Map the constant buffer and set the constant value 'a'.
     D3D11_MAPPED_SUBRESOURCE mappedResource;
-    context->Map(constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+    winrt::check_hresult(context->Map(constantBuffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource));
     float* constants = reinterpret_cast<float*>(mappedResource.pData);
     constants[0] = a;
     constants = nullptr;
-    context->Unmap(constantBuffer, 0);
+    context->Unmap(constantBuffer.get(), 0);
 
     // Map the x buffer and copy our data into it.
-    context->Map(xBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+    winrt::check_hresult(context->Map(xBuffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource));
     float* xvalues = reinterpret_cast<float*>(mappedResource.pData);
     memcpy(xvalues, &x[0], sizeof(float)*x.size());
     xvalues = nullptr;
-    context->Unmap(xBuffer, 0);
+    context->Unmap(xBuffer.get(), 0);
 
     // Map the y buffer and copy our data into it.
-    context->Map(yBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+    winrt::check_hresult(context->Map(yBuffer.get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource));
     float* yvalues = reinterpret_cast<float*>(mappedResource.pData);
     memcpy(yvalues, &y[0], sizeof(float)*y.size());
     yvalues = nullptr;
-    context->Unmap(yBuffer, 0);
+    context->Unmap(yBuffer.get(), 0);
 
     // Compile the compute shader into a blob.
-    ID3DBlob* errorBlob = nullptr;
-    ID3DBlob* shaderBlob = nullptr;
+    winrt::com_ptr<ID3DBlob> errorBlob;
+    winrt::com_ptr<ID3DBlob> shaderBlob;
     hr = D3DX11CompileFromFile(L"kernel.hlsl", NULL, NULL, "saxpy", "cs_4_0",
-        D3D10_SHADER_ENABLE_STRICTNESS, 0, NULL, &shaderBlob, &errorBlob, NULL);
+        D3D10_SHADER_ENABLE_STRICTNESS, 0, NULL, shaderBlob.put(), errorBlob.put(), NULL);
     if (FAILED(hr))
     {
         // Print out the error message if there is one.
@@ -205,9 +211,9 @@ int _tmain(int /*argc*/, _TCHAR* /*argv[]*/)
     }
 
     // Create a shader object from the compiled blob.
-    ID3D11ComputeShader* computeShader;
+    winrt::com_ptr<ID3D11ComputeShader> computeShader;
     hr = device->CreateComputeShader(shaderBlob->GetBufferPointer(), 
-        shaderBlob->GetBufferSize(), NULL, &computeShader);
+        shaderBlob->GetBufferSize(), NULL, computeShader.put());
     if (FAILED(hr))
     {
         printf("CreateComputeShader failed with return code %x\n", hr);
@@ -215,32 +221,36 @@ int _tmain(int /*argc*/, _TCHAR* /*argv[]*/)
     }
 
     // Make the shader active.
-    context->CSSetShader(computeShader, NULL, 0);
+    context->CSSetShader(computeShader.get(), NULL, 0);
 
     // Attach the z buffer to the output via its unordered access view.
-    UINT initCounts = 0xFFFFFFFF;
-    context->CSSetUnorderedAccessViews(0, 1, &zBufferUAV, &initCounts);
+    ID3D11UnorderedAccessView* UnorderedAccessViews[] { zBufferUAV.get() };
+    UINT initCounts = static_cast<UINT>(-1);
+    context->CSSetUnorderedAccessViews(0, static_cast<UINT>(std::size(UnorderedAccessViews)), UnorderedAccessViews, &initCounts);
 
     // Attach the input buffers via their shader resource views.
-    context->CSSetShaderResources(0, 1, &xSRV);
-    context->CSSetShaderResources(1, 1, &ySRV);
+    ID3D11ShaderResourceView* ShaderResourceViews0[] { xSRV.get() };
+    context->CSSetShaderResources(0, static_cast<UINT>(std::size(ShaderResourceViews0)), ShaderResourceViews0);
+    ID3D11ShaderResourceView* ShaderResourceViews1[] { ySRV.get() };
+    context->CSSetShaderResources(1, static_cast<UINT>(std::size(ShaderResourceViews1)), ShaderResourceViews1);
 
     // Attach the constant buffer
-    context->CSSetConstantBuffers(0, 1, &constantBuffer);
+    ID3D11Buffer* ConstantBuffers[] { constantBuffer.get() };
+    context->CSSetConstantBuffers(0, static_cast<UINT>(std::size(ConstantBuffers)), ConstantBuffers);
 
     // Execute the shader, in 'numGroups' groups of 'groupSize' threads each.
     context->Dispatch(numGroups, 1, 1);
 
     // Copy the z buffer to the staging buffer so that we can 
     // retrieve the data for accesss by the CPU.
-    context->CopyResource(stagingBuffer, zBuffer);
+    context->CopyResource(stagingBuffer.get(), zBuffer.get());
 
     // Map the staging buffer for reading.
-    context->Map(stagingBuffer, 0, D3D11_MAP_READ, 0, &mappedResource);
+    winrt::check_hresult(context->Map(stagingBuffer.get(), 0, D3D11_MAP_READ, 0, &mappedResource));
     float* zData = reinterpret_cast<float*>(mappedResource.pData);
     memcpy(&z[0], zData, sizeof(float)*z.size());
     zData = nullptr;
-    context->Unmap(stagingBuffer, 0);
+    context->Unmap(stagingBuffer.get(), 0);
 
     // Now compare the GPU results against expected values.
     bool resultOK = true;
@@ -269,29 +279,19 @@ int _tmain(int /*argc*/, _TCHAR* /*argv[]*/)
     OutputDebugStringA("GPU output matched the CPU results.\n");
 
     // Disconnect everything from the pipeline.
-    ID3D11UnorderedAccessView* nullUAV = nullptr;
-    context->CSSetUnorderedAccessViews( 0, 1, &nullUAV, &initCounts);
-    ID3D11ShaderResourceView* nullSRV = nullptr;
-    context->CSSetShaderResources(0, 1, &nullSRV);
-    context->CSSetShaderResources(1, 1, &nullSRV);
-    ID3D11Buffer* nullBuffer = nullptr;
-    context->CSSetConstantBuffers(0, 1, &nullBuffer);
+    {
+        ID3D11UnorderedAccessView* UnorderedAccessViews[] { nullptr };
+        context->CSSetUnorderedAccessViews(0, static_cast<UINT>(std::size(UnorderedAccessViews)), UnorderedAccessViews, &initCounts);
+        ID3D11ShaderResourceView* ShaderResourceViews[] { nullptr };
+        context->CSSetShaderResources(0, static_cast<UINT>(std::size(ShaderResourceViews0)), ShaderResourceViews0);
+        context->CSSetShaderResources(1, static_cast<UINT>(std::size(ShaderResourceViews0)), ShaderResourceViews0);
+        ID3D11Buffer* ConstantBuffers[] { nullptr };
+        context->CSSetConstantBuffers(0, 0, nullptr);
+    }
 
     // Release resources.  Again, note that none of the error checks above
     // release resources that have been allocated up to this point, so the 
     // sample doesn't clean up after itself correctly unless everything succeeds.
-    computeShader->Release();
-    shaderBlob->Release();
-    constantBuffer->Release();
-    stagingBuffer->Release();
-    zBufferUAV->Release();
-    zBuffer->Release();
-    xSRV->Release();
-    xBuffer->Release();
-    ySRV->Release();
-    yBuffer->Release();
-    context->Release();
-    device->Release();
 
     return 0;
 }
