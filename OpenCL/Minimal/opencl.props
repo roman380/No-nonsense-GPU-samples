@@ -8,14 +8,11 @@
   <ItemDefinitionGroup>
     <ClCompile>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(OpenclDir)\include</AdditionalIncludeDirectories>
-      <!-- 
-        <PreprocessorDefinitions Condition="'$(Configuration)' != 'Debug'">%(PreprocessorDefinitions);DEVELOPMENT;RAISE_ASSERT_EXCEPTION</PreprocessorDefinitions>
-        <PreprocessorDefinitions Condition="'$(Platform)' == 'x64'">%(PreprocessorDefinitions);RAINWAY_ENCODER_TRANSFORM</PreprocessorDefinitions>
-      -->
+      <PreprocessorDefinitions>%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories Condition="'$(Platform)' == 'x64'">%(AdditionalLibraryDirectories);$(OpenclDir)\lib\$(Platform)</AdditionalLibraryDirectories>
-      <AdditionalLibraryDirectories Condition="'$(Platform)' != 'x64'">%(AdditionalLibraryDirectories);$(OpenclDir)\lib\x86</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories Condition="'$(Platform)' != 'Win32'">%(AdditionalLibraryDirectories);$(OpenclDir)\lib\$(Platform)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories Condition="'$(Platform)' == 'Win32'">%(AdditionalLibraryDirectories);$(OpenclDir)\lib\x86</AdditionalLibraryDirectories>
       <AdditionalDependencies>%(AdditionalDependencies);OpenCL.lib</AdditionalDependencies>
       <AdditionalOptions>%(AdditionalOptions)</AdditionalOptions>
       <DelayLoadDLLs>%(DelayLoadDLLs)</DelayLoadDLLs>
