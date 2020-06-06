@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ImportGroup Label="PropertySheets" />
+  <PropertyGroup Label="UserMacros">
+    <OpenclDir>C:\Intel\OpenCL\sdk</OpenclDir>
+    </PropertyGroup>
+    <PropertyGroup />
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(OpenclDir)\include</AdditionalIncludeDirectories>
+      <!-- 
+        <PreprocessorDefinitions Condition="'$(Configuration)' != 'Debug'">%(PreprocessorDefinitions);DEVELOPMENT;RAISE_ASSERT_EXCEPTION</PreprocessorDefinitions>
+        <PreprocessorDefinitions Condition="'$(Platform)' == 'x64'">%(PreprocessorDefinitions);RAINWAY_ENCODER_TRANSFORM</PreprocessorDefinitions>
+      -->
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories Condition="'$(Platform)' == 'x64'">%(AdditionalLibraryDirectories);$(OpenclDir)\lib\$(Platform)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories Condition="'$(Platform)' != 'x64'">%(AdditionalLibraryDirectories);$(OpenclDir)\lib\x86</AdditionalLibraryDirectories>
+      <AdditionalDependencies>%(AdditionalDependencies);OpenCL.lib</AdditionalDependencies>
+      <AdditionalOptions>%(AdditionalOptions)</AdditionalOptions>
+      <DelayLoadDLLs>%(DelayLoadDLLs)</DelayLoadDLLs>
+    </Link>
+    <Midl />
+    <PostBuildEvent />
+  </ItemDefinitionGroup>
+  <ItemGroup />
+</Project>
